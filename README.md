@@ -1,0 +1,134 @@
+
+# NeonOS
+
+NeonOS connects a BLE RGB light to Apple Home using an ESP32. An SSD1306 OLED and the onboard BOOT button provide local controls.
+
+The ESP32 communicates with HomeKit over Wi-Fi and sends power, RGB and brightness commands to the light over Bluetooth Low Energy.
+
+## Features
+
+- Power, brightness and color control from Apple Home
+- Seven RGB presets accessible from the OLED menu
+- Native BLE brightness control independent of RGB values
+- Automatic BLE reconnection and state replay
+- OLED screen-off mode saved across restarts
+- Local controls disabled while the screen is off, except for the wake gesture
+- Dim GPIO2 LED breathing effect while Wi-Fi or BLE is disconnected
+
+BLE writes are not physical-state confirmations. The interface shows the requested light state.
+
+## Hardware
+
+- ESP32-WROOM-32 development board
+- SSD1306 128×64 I²C OLED (`0x3C`)
+- BLE RGB light controller using service `FFF0` and characteristic `FFF3`
+- Four jumper wires
+
+### OLED wiring
+
+| OLED | ESP32 |
+| --- | --- |
+| VCC | 3V3 |
+| GND | GND |
+| SDA | GPIO21 |
+| SCL | GPIO22 |
+
+The BOOT button uses GPIO0. The onboard blue status LED uses GPIO2. The power LED near USB is connected to the board's power circuit and cannot be dimmed by this firmware.
+
+## Project structure
+
+```text
+neon-os/
+├── neon-os.ino        Setup and main loop
+├── config.h           Pin mapping, timing and BLE address
+├── colors.h           RGB presets and color conversion
+├── ble-bridge.h       BLE connection, commands and worker
+├── homekit-light.h    HomeKit accessory and state handling
+├── interface.h        OLED, BOOT button and status LED
+├── README.md
+├── LICENSE
+└── .gitignore
+```
+
+The sketch and header files are kept together at the repository root.
+
+## Installation
+
+Install [Arduino IDE](https://www.arduino.cc/en/software) and the ESP32 board package, then install these libraries:
+
+- [HomeSpan](https://github.com/HomeSpan/HomeSpan) 2.1.8
+- [NimBLE-Arduino](https://github.com/h2zero/NimBLE-Arduino) 2.x
+- [Adafruit GFX](https://github.com/adafruit/Adafruit-GFX-Library)
+- [Adafruit SSD1306](https://github.com/adafruit/Adafruit_SSD1306)
+
+The project uses Arduino-ESP32 3.3.x and targets **ESP32 Dev Module**.
+
+```bash
+git clone https://github.com/amansanoj/neon-os.git
+```
+
+Open `neon-os.ino` from the `neon-os` directory in Arduino IDE.
+
+1. Connect the OLED using the wiring table above.
+2. Check the BLE controller address in `config.h`. The included address is specific to the original light.
+3. Select **ESP32 Dev Module** and the correct serial port.
+4. Set **Flash Size** to **4MB** and keep **PSRAM** disabled for the ESP32-WROOM-32 board.
+5. Keep **Erase All Flash Before Sketch Upload** set to **Disabled** when updating an already configured device.
+6. Upload the sketch and open Serial Monitor at **115200 baud**.
+7. On first setup, follow the HomeSpan serial prompts to configure Wi-Fi and pair the accessory in Apple Home.
+
+Erasing the entire flash removes stored Wi-Fi credentials, HomeKit pairing information and local preferences.
+
+## OLED interface
+
+The 128×64 menu uses a small FreeSans heading and a compact bitmap font for the controls. The heading is left-aligned; labels sit on the left and their values are right-aligned.
+
+```text
+NeonOS
+─────────────────────
+● Power             On
+○ Brightness       75%
+○ Color          Purple
+```
+
+The menu uses **Power**, **Brightness** and **Color** without abbreviations. A filled circle marks the selected row. The startup screen shows the same `NeonOS` heading centered on the display.
+
+The custom heading uses `FreeSans9pt7b`, included with Adafruit GFX; the rows use the default 6×8 bitmap font. These are the intended UI settings for the latest `interface.h` changes.
+
+### BOOT controls
+
+| Action | Screen on | Screen off |
+| --- | --- | --- |
+| Single click | Select next row | Ignored |
+| Double click | Change the selected setting | Ignored |
+| Hold for 2 seconds | Turn off the OLED | Wake the OLED |
+
+The Brightness row cycles through **25%, 50%, 75% and 100%**. Color cycles through the presets below. Turning off the OLED doesn't interrupt Apple Home or the BLE bridge. Screen-off mode survives restarts.
+
+Don't hold BOOT while resetting or powering on the ESP32. GPIO0 is a bootstrapping pin; doing so may start firmware-download mode.
+
+## Color presets
+
+| Preset | RGB |
+| --- | --- |
+| Warm | `255, 170, 84` |
+| Neutral | `255, 224, 196` |
+| Cool | `204, 219, 255` |
+| Red | `255, 0, 0` |
+| Green | `0, 255, 0` |
+| Blue | `0, 0, 255` |
+| Purple | `128, 0, 128` |
+
+Presets are defined in `colors.h`. Local selections send their exact RGB bytes to the controller. Apple Home uses Hue and Saturation, which NeonOS converts to RGB. Brightness is sent separately using the controller's native brightness command.
+
+## Notes
+
+NeonOS is built for a MELK-style controller using writable BLE characteristic `FFF3` in service `FFF0`. Other RGB light controllers may use different commands or services.
+
+The optional HomeSpan `/status` web log is not enabled. Serial output remains available for troubleshooting.
+
+The firmware has not been independently compiled or validated on every supported device. Check behavior on your own controller before relying on it for unattended use.
+
+## License
+
+[MIT](LICENSE)
