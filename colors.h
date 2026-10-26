@@ -22,7 +22,7 @@ static constexpr ColorPreset COLORS[] = {
  {"Cool",    {204,219,255}},
  {"Red",     {255,  0,  0}},
  {"Green",   {  0,255,  0}},
- {"Blue",    {  0,  255}},
+ {"Blue",    {  0,  0,255}},
  {"Purple",  {128,  0,128}}
 };
 static constexpr uint8_t COLOR_COUNT = sizeof(COLORS)/sizeof(COLORS[0]);

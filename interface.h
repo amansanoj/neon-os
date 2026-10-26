@@ -9,6 +9,7 @@
 #include <cmath>
 
 static bool displayEnabled = true;
+static bool displayFlipped = false;
 static bool ledPwmReady = false;
 
 static void indicator(uint32_t now) {
@@ -225,94 +226,98 @@ static void toggleDisplay() {
   );
 }
 
+static void flipDisplay() {
+  displayFlipped = !displayFlipped;
+
+  if (storageReady &&
+      preferences.putBool("flipped", displayFlipped) != 1) {
+    Serial.println("[NVS] Could not save display orientation");
+  }
+
+  if (oledReady) {
+    oled.setRotation(displayFlipped ? 2 : 0);
+    render();
+  }
+
+  Serial.printf("[OLED] Rotation %u degrees\n",
+                displayFlipped ? 180 : 0);
+}
+
+static void handleClicks(uint8_t count) {
+  if (!displayEnabled) return;
+
+  if (count == 1) {
+    selectedOption = (selectedOption + 1) % 3;
+  } else if (count == 4) {
+    flipDisplay();
+  } else if (count == 2 && light) {
+    if (selectedOption == 0) {
+      light->setPowerLocal(!currentState.on);
+    } else if (selectedOption == 1) {
+      const uint8_t levels[] = {25, 50, 75, 100};
+      uint8_t next = 25;
+
+      for (uint8_t level : levels) {
+        if (level > currentState.brightness) {
+          next = level;
+          break;
+        }
+      }
+
+      light->setBrightnessLocal(next);
+    } else {
+      light->nextColorLocal();
+    }
+  }
+  // Three clicks and sequences longer than four have no action.
+}
+
 static void buttonTick(uint32_t now) {
   static bool rawPrev = true;
   static bool stable = true;
   static bool longConsumed = false;
-
   static uint32_t changedAt = 0;
   static uint32_t pressedAt = 0;
   static uint32_t releasedAt = 0;
-
   static uint8_t clickCount = 0;
 
-  const bool raw =
-      digitalRead(C::BUTTON_PIN) == HIGH;
+  const bool raw = digitalRead(C::BUTTON_PIN) == HIGH;
 
   if (raw != rawPrev) {
     rawPrev = raw;
     changedAt = now;
   }
 
-  if (
-      raw != stable &&
-      now - changedAt >= C::DEBOUNCE
-  ) {
+  // Resolve only after the inter-click window closes. A press that starts
+  // inside the window belongs to this sequence, even while it debounces.
+  if (stable && clickCount != 0 &&
+      now - releasedAt > C::DOUBLE_MS &&
+      (raw || changedAt - releasedAt > C::DOUBLE_MS)) {
+    const uint8_t completed = clickCount;
+    clickCount = 0;
+    handleClicks(completed);
+  }
+
+  if (raw != stable && now - changedAt >= C::DEBOUNCE) {
     stable = raw;
 
     if (!stable) {
       pressedAt = now;
       longConsumed = false;
-    } else if (!longConsumed) {
-      if (!displayEnabled) {
-        clickCount = 0;
-        return;
-      }
-
-      ++clickCount;
+    } else if (!longConsumed && displayEnabled) {
+      // Saturate at an invalid count so a long burst cannot wrap into
+      // a valid gesture or accidentally toggle the display repeatedly.
+      if (clickCount < 5) ++clickCount;
       releasedAt = now;
-
-      if (clickCount == 2) {
-        clickCount = 0;
-
-        if (!light) return;
-
-        if (selectedOption == 0) {
-          light->setPowerLocal(
-              !currentState.on
-          );
-        } else if (selectedOption == 1) {
-          const uint8_t levels[] = {
-              25, 50, 75, 100
-          };
-
-          uint8_t next = 25;
-
-          for (uint8_t level : levels) {
-            if (level > currentState.brightness) {
-              next = level;
-              break;
-            }
-          }
-
-          light->setBrightnessLocal(next);
-        } else {
-          light->nextColorLocal();
-        }
-      }
+    } else {
+      clickCount = 0;
     }
   }
 
-  if (
-      !stable &&
-      !longConsumed &&
-      now - pressedAt >= C::LONG_MS
-  ) {
+  if (!stable && !longConsumed &&
+      now - pressedAt >= C::LONG_MS) {
     longConsumed = true;
     clickCount = 0;
     toggleDisplay();
-  }
-
-  if (
-      stable &&
-      clickCount == 1 &&
-      now - releasedAt > C::DOUBLE_MS
-  ) {
-    clickCount = 0;
-
-    if (displayEnabled) {
-      selectedOption =
-          (selectedOption + 1) % 3;
-    }
   }
 }

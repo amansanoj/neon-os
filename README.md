@@ -11,7 +11,7 @@ The ESP32 communicates with HomeKit over Wi-Fi and sends power, RGB and brightne
 - Seven RGB presets accessible from the OLED menu
 - Native BLE brightness control independent of RGB values
 - Automatic BLE reconnection and state replay
-- OLED screen-off mode saved across restarts
+- OLED screen-off mode and 180° display orientation saved across restarts
 - Local controls disabled while the screen is off, except for the wake gesture
 - Dim GPIO2 LED breathing effect while Wi-Fi or BLE is disconnected
 
@@ -72,9 +72,9 @@ Open `neon-os.ino` from the `neon-os` directory in Arduino IDE.
 1. Connect the OLED using the wiring table above.
 2. Check the BLE controller address in `config.h`. The included address is specific to the original light.
 3. Select **ESP32 Dev Module** and the correct serial port.
-4. Set **Flash Size** to **4MB** and keep **PSRAM** disabled for the ESP32-WROOM-32 board.
+4. Set **Flash Size** to **4MB**, keep **PSRAM** disabled, and select **Partition Scheme → Minimal SPIFFS (1.9MB APP with OTA/128KB SPIFFS)**. The HomeKit/BLE firmware exceeds the default 1.2MB application partition.
 5. Keep **Erase All Flash Before Sketch Upload** set to **Disabled** when updating an already configured device.
-6. Upload the sketch and open Serial Monitor at **115200 baud**.
+6. Upload the sketch over USB when changing the partition scheme (OTA cannot change the partition table), and open Serial Monitor at **115200 baud**.
 7. On first setup, follow the HomeSpan serial prompts to configure Wi-Fi and pair the accessory in Apple Home.
 
 Erasing the entire flash removes stored Wi-Fi credentials, HomeKit pairing information and local preferences.
@@ -101,7 +101,10 @@ The custom heading uses `FreeSans9pt7b`, included with Adafruit GFX; the rows us
 | --- | --- | --- |
 | Single click | Select next row | Ignored |
 | Double click | Change the selected setting | Ignored |
+| Four clicks | Toggle display rotation between 0° and 180° | Ignored |
 | Hold for 2 seconds | Turn off the OLED | Wake the OLED |
+
+Click actions run after a 330 ms pause following the last release. Start each subsequent press within that window. Four clicks flip only the display; they do not change the selected light setting. Three clicks or more than four clicks are ignored. A long hold cancels pending clicks. Display orientation survives restarts.
 
 The Brightness row cycles through **25%, 50%, 75% and 100%**. Color cycles through the presets below. Turning off the OLED doesn't interrupt Apple Home or the BLE bridge. Screen-off mode survives restarts.
 
@@ -120,6 +123,29 @@ Don't hold BOOT while resetting or powering on the ESP32. GPIO0 is a bootstrappi
 | Purple | `128, 0, 128` |
 
 Presets are defined in `colors.h`. Local selections send their exact RGB bytes to the controller. Apple Home uses Hue and Saturation, which NeonOS converts to RGB. Brightness is sent separately using the controller's native brightness command.
+
+## Validation
+
+Run the native regression checks with Python 3 and a C++17 compiler:
+
+```bash
+python3 tests/run_native.py
+```
+
+These checks compile the actual color, HomeKit-light and interface headers against host substitutes. They cover preset RGB values and wraparound, single/double/four-click gestures, ignored click counts, bounce, long holds, screen-off behavior, timing boundaries and timer rollover. They do not emulate the ESP32, BLE controller, HomeKit network or physical OLED.
+
+With the documented board package and libraries installed, compile using Arduino CLI:
+
+```bash
+arduino-cli compile --fqbn esp32:esp32:esp32:FlashSize=4M,PSRAM=disabled,PartitionScheme=min_spiffs --jobs 4 .
+```
+
+Before release, verify on hardware:
+
+- Cycle all seven presets through Blue and Purple and back to Warm; confirm the OLED and physical light agree.
+- On each menu row, four-click BOOT and confirm only the display flips. Repeat to restore orientation, then reboot to verify it is retained.
+- Check single/double clicks, hold-to-sleep/wake, and ignored clicks while asleep in both orientations.
+- Check Apple Home power/brightness/color control and BLE disconnect/reconnect state replay after these gestures.
 
 ## Notes
 

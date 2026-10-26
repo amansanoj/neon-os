@@ -126,6 +126,10 @@ void setup() {
       ? preferences.getBool("oled", true)
       : true;
 
+  displayFlipped = storageReady
+      ? preferences.getBool("flipped", false)
+      : false;
+
   Wire.begin(
       C::SDA_PIN,
       C::SCL_PIN
@@ -139,6 +143,7 @@ void setup() {
   );
 
   if (oledReady) {
+    oled.setRotation(displayFlipped ? 2 : 0);
     oled.ssd1306_command(
         SSD1306_SETCONTRAST
     );
