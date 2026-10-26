@@ -181,6 +181,12 @@ void setup() {
   }
 
   NimBLEDevice::init("");
+  const int bleTxPower = NimBLEDevice::getPower();
+  if (bleTxPower != 0xFF) {
+    Serial.printf("[BLE] TX power=%d dBm\n", bleTxPower);
+  } else {
+    Serial.println("[BLE] TX power unavailable");
+  }
 
   bleClient = NimBLEDevice::createClient();
 

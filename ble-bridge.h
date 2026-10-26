@@ -1,5 +1,6 @@
 #pragma once
 #include <NimBLEDevice.h>
+#include <NimBLEUtils.h>
 #include <atomic>
 #include <string>
 static bool sendFrame(const uint8_t (&frame)[9],const char *what){
@@ -27,16 +28,29 @@ static bool sendBrightness(uint8_t value){
 class BleEvents : public NimBLEClientCallbacks {
  void onDisconnect(NimBLEClient*,int reason) override {
   bleDropped.store(true);bleConnected.store(false);
-  Serial.printf("[BLE] Disconnected reason=%d\n",reason);
+  Serial.printf("[BLE] Disconnected reason=%d (0x%X): %s\n",
+      reason,static_cast<unsigned>(reason),NimBLEUtils::returnCodeToString(reason));
  }
 };
 static BleEvents events;
+static void logBleLink() {
+ if(!bleClient->isConnected())return;
+ const int rssi=bleClient->getRssi();
+ // NimBLE returns zero if the RSSI read fails; do not report it as a strong link.
+ if(rssi!=0)Serial.printf("[BLE] Link RSSI=%d dBm\n",rssi);
+ else Serial.println("[BLE] Link RSSI unavailable");
+}
 static bool connectBle(uint8_t type){
  bleCharacteristic=nullptr;
  if(bleClient->isConnected())bleClient->disconnect();
  NimBLEAddress address(std::string(C::MAC),type);
  Serial.printf("[BLE] Connecting type=%u\n",type);
- if(!bleClient->connect(address,true,false,false))return false;
+ if(!bleClient->connect(address,true,false,false)){
+  const int error=bleClient->getLastError();
+  Serial.printf("[BLE] Connect failed type=%u error=%d (0x%X): %s\n",
+      type,error,static_cast<unsigned>(error),NimBLEUtils::returnCodeToString(error));
+  return false;
+ }
  auto *svc=bleClient->getService(NimBLEUUID((uint16_t)0xFFF0));
  if(svc)bleCharacteristic=svc->getCharacteristic(NimBLEUUID((uint16_t)0xFFF3));
  if(!bleCharacteristic || (!bleCharacteristic->canWrite() && !bleCharacteristic->canWriteNoResponse())){
@@ -46,13 +60,19 @@ static bool connectBle(uint8_t type){
  writeResponse=!bleCharacteristic->canWriteNoResponse();
  bleConnected.store(true);
  Serial.printf("[BLE] Connected, response=%d, free heap=%u\n",writeResponse,ESP.getFreeHeap());
+ const auto info=bleClient->getConnInfo();
+ Serial.printf("[BLE] Link interval=%.2f ms latency=%u timeout=%u ms\n",
+     info.getConnInterval()*1.25,static_cast<unsigned>(info.getConnLatency()),
+     static_cast<unsigned>(info.getConnTimeout())*10);
+ logBleLink();
  return true;
 }
 static void bleWorker(void*){
  LightState desired{false,100,{255,255,255},0,0},applied{};
  bool linked=false,powerSynced=false,colorSynced=false,dimSynced=false;
  uint8_t addrType=BLE_ADDR_PUBLIC;
- uint32_t retry=C::RETRY_MIN,nextConnect=0,nextWrite=0;
+ bool addrTypeKnown=false;
+ uint32_t retry=C::RETRY_MIN,nextConnect=0,nextWrite=0,nextLinkLog=0;
  for(;;){
   LightState incoming;
   if(xQueueReceive(stateQueue,&incoming,0)==pdTRUE)desired=incoming;
@@ -65,15 +85,21 @@ static void bleWorker(void*){
   if(!linked && due(now,nextConnect)){
    bleDropped.store(false);
    linked=connectBle(addrType);
-   if(linked){retry=C::RETRY_MIN;powerSynced=colorSynced=dimSynced=false;nextWrite=millis();}
+   if(linked){addrTypeKnown=true;retry=C::RETRY_MIN;powerSynced=colorSynced=dimSynced=false;nextWrite=millis();nextLinkLog=millis()+C::BLE_LINK_LOG_MS;}
    else{
     bleConnected.store(false);
-    addrType=(addrType==BLE_ADDR_PUBLIC)?BLE_ADDR_RANDOM:BLE_ADDR_PUBLIC;
+    // Discover the address type until the first successful connection, then
+    // keep that type: a timeout does not change the peer's identity address.
+    if(!addrTypeKnown)addrType=(addrType==BLE_ADDR_PUBLIC)?BLE_ADDR_RANDOM:BLE_ADDR_PUBLIC;
     nextConnect=millis()+retry;
     Serial.printf("[BLE] Reconnect in %lu ms\n",(unsigned long)retry);
     retry=min(retry*2UL,(uint32_t)C::RETRY_MAX);
    }
    continue;
+  }
+  if(linked && due(now,nextLinkLog)){
+   logBleLink();
+   nextLinkLog=millis()+C::BLE_LINK_LOG_MS;
   }
   if(linked && due(now,nextWrite)){
    bool attempt=false,ok=true;

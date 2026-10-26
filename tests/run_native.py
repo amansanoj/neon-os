@@ -95,3 +95,14 @@ with tempfile.TemporaryDirectory(prefix='neon-tests-') as temp:
                      'off', 'bounce', 'boundary', 'late', 'wrap', 'no-storage', 'rgb-display']:
         subprocess.run([str(binary), scenario], check=True)
         print(f'PASS {scenario}', flush=True)
+
+    for header in ['NimBLEDevice.h', 'NimBLEUtils.h']:
+        (tmp / header).touch()
+    ble_binary = tmp / 'ble-regression'
+    subprocess.run(['g++', '-std=c++17', '-Wall', '-Wextra', '-Werror',
+                    '-Wno-unused-function', '-Wno-unused-variable', '-fsanitize=undefined',
+                    '-I', str(tmp), '-I', str(ROOT),
+                    str(ROOT / 'tests/ble_regression.cpp'), '-o', str(ble_binary)], check=True)
+    for scenario in ['discover', 'public', 'random']:
+        subprocess.run([str(ble_binary), scenario], check=True, timeout=10)
+        print(f'PASS ble-{scenario}', flush=True)

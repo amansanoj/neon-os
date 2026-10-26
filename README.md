@@ -134,7 +134,7 @@ Run the native regression checks with Python 3 and a C++17 compiler:
 python3 tests/run_native.py
 ```
 
-These checks compile the actual color, HomeKit-light and interface headers against host substitutes. They cover preset RGB values and wraparound, single/double/four-click gestures, ignored click counts, bounce, long holds, screen-off behavior, timing boundaries and timer rollover. They do not emulate the ESP32, BLE controller, HomeKit network or physical OLED.
+These checks compile the actual color, HomeKit-light and interface headers against host substitutes. They cover preset RGB values and wraparound, single/double/four-click gestures, ignored click counts, bounce, long holds, screen-off behavior, timing boundaries and timer rollover. BLE worker simulations also check initial address-type discovery, retention of the working public/random address type after link loss, capped reconnect delays and periodic signal sampling. They do not emulate the ESP32, BLE controller, HomeKit network or physical OLED.
 
 With the documented board package and libraries installed, compile using Arduino CLI:
 
@@ -148,6 +148,16 @@ Before release, verify on hardware:
 - On each menu row, four-click BOOT and confirm only the display flips. Repeat to restore orientation, then reboot to verify it is retained.
 - Check single/double clicks, hold-to-sleep/wake, and ignored clicks while asleep in both orientations.
 - Check Apple Home power/brightness/color control and BLE disconnect/reconnect state replay after these gestures.
+
+## BLE link troubleshooting
+
+The ESP32 shares its 2.4 GHz radio between Wi-Fi and BLE. Keep its antenna end clear of the OLED PCB, metal, breadboard contacts and jumper wires; test with several centimetres of separation and the antenna projecting beyond the breadboard. If movement triggers a restart, also check the USB cable, supply and breadboard connections.
+
+Serial logs report BLE transmit power at startup, negotiated connection parameters at connection, and BLE RSSI every five seconds while connected. The Wi-Fi RSSI printed by HomeSpan measures the access point, not the light controller. More negative BLE RSSI indicates weaker reception, but RSSI alone cannot identify interference or prove a reliable link. A zero/failed RSSI read is reported as unavailable.
+
+`Disconnected reason=520 (0x208)` is a BLE connection supervision timeout: packets were not received before the negotiated deadline. It does not by itself identify the cause. Compare stationary operation near the light with the original placement, and check whether the controller remains powered and another phone/app is connecting to it.
+
+Reconnects retain the address type after the first successful connection. Before that, public/random types are tried alternately. The retry delay backs off from 750 ms to a maximum of five seconds, in addition to each connection attempt's timeout. Successful reconnection replays the requested light state. Firmware logs and host tests cannot establish physical BLE range; verify placement and recovery on the device.
 
 ## Notes
 
