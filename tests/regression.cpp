@@ -41,6 +41,26 @@ int main(int argc,char** argv) {
       }
     }
     assert(submissions==21);
+  } else if(scenario=="rgb-display") {
+    const RGB values[]={{23,54,87},{255,255,255},{0,0,0},{123,234,255}};
+    const char* expected[]={"23,54,87","255,255,255","0,0,0","123,234,255"};
+    for(int rotation: {0,2}) {
+      oled.setRotation(rotation);
+      for(unsigned i=0;i<4;++i) {
+        currentState.rgb=values[i];
+        render();
+        assert(oled.printedText==expected[i]);
+        assert(oled.printedX>=17+6*5+6); // Color label plus a character gap.
+        assert(oled.printedX+oled.printedText.size()*6==126);
+        assert(oled.rotation==rotation);
+      }
+      for(const auto& preset: COLORS) {
+        currentState.rgb=preset.rgb;
+        render();
+        assert(oled.printedText==preset.name);
+      }
+    }
+    assert(submissions==0);
   } else if(scenario=="single") {
     for(int i=0;i<3;++i) { clicks(1); settle(); assert(selectedOption==(i+1)%3); }
     assert(submissions==0);

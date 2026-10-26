@@ -169,9 +169,21 @@ static void render() {
 
   const int preset = currentPreset(currentState);
 
+  char rgbText[12];  // "255,255,255" plus the terminator.
+  if (preset < 0) {
+    snprintf(
+        rgbText,
+        sizeof(rgbText),
+        "%u,%u,%u",
+        static_cast<unsigned>(currentState.rgb.r),
+        static_cast<unsigned>(currentState.rgb.g),
+        static_cast<unsigned>(currentState.rgb.b)
+    );
+  }
+
   const char* colorName =
       preset < 0
-          ? "Custom"
+          ? rgbText
           : COLORS[preset].name;
 
   drawMenuRow(

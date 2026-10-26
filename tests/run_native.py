@@ -55,16 +55,18 @@ namespace Characteristic {
 static int FreeSans9pt7b;
 struct {
  int rotation=0, frames=0;
+ int cursorX=0, printedX=0;
+ std::string printedText;
  void setRotation(int r) { rotation=r; }
  void setFont(const int*) {}
  void setTextSize(int) {}
  void setTextColor(int) {}
  void setTextWrap(bool) {}
- void getTextBounds(const char*,int,int,int16_t* x,int16_t* y,uint16_t* w,uint16_t* h) {
-  *x=*y=0; *w=30; *h=8;
+ void getTextBounds(const char* text,int,int,int16_t* x,int16_t* y,uint16_t* w,uint16_t* h) {
+  *x=*y=0; *w=std::string(text).size()*6; *h=8;
  }
- void setCursor(int,int) {}
- void print(const char*) {}
+ void setCursor(int x,int) { cursorX=x; }
+ void print(const char* text) { printedText=text; printedX=cursorX; }
  void clearDisplay() {}
  void display() { ++frames; }
  void fillCircle(int,int,int,int) {}
@@ -90,6 +92,6 @@ with tempfile.TemporaryDirectory(prefix='neon-tests-') as temp:
                     '-I', str(tmp), '-I', str(ROOT),
                     str(ROOT / 'tests/regression.cpp'), '-o', str(binary)], check=True)
     for scenario in ['colors', 'single', 'double', 'four', 'invalid', 'hold',
-                     'off', 'bounce', 'boundary', 'late', 'wrap', 'no-storage']:
+                     'off', 'bounce', 'boundary', 'late', 'wrap', 'no-storage', 'rgb-display']:
         subprocess.run([str(binary), scenario], check=True)
         print(f'PASS {scenario}', flush=True)

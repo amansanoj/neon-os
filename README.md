@@ -93,6 +93,8 @@ NeonOS
 
 The menu uses **Power**, **Brightness** and **Color** without abbreviations. A filled circle marks the selected row. The startup screen shows the same `NeonOS` heading centered on the display.
 
+The Color row shows the preset name when RGB matches a preset; otherwise it shows the RGB bytes, for example `Color    23,54,87`.
+
 The custom heading uses `FreeSans9pt7b`, included with Adafruit GFX; the rows use the default 6×8 bitmap font. These are the intended UI settings for the latest `interface.h` changes.
 
 ### BOOT controls
