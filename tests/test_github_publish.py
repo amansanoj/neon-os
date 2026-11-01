@@ -1,6 +1,8 @@
 import copy
 import hashlib
 import importlib
+import os
+import subprocess
 from pathlib import Path
 import sys
 import tempfile
@@ -11,6 +13,29 @@ from urllib.error import HTTPError
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
 publisher = importlib.import_module('github_publish')
 signing = publisher.signing
+
+
+class ProxyTests(unittest.TestCase):
+    def test_proxy_selection_never_exports_empty_override(self):
+        script = str(Path(__file__).resolve().parents[1] / 'tools/arduino-proxy.sh')
+        keys = ['ARDUINO_NETWORK_PROXY','HTTPS_PROXY','https_proxy','HTTP_PROXY','http_proxy']
+        cases = [({},'UNSET'), ({'ARDUINO_NETWORK_PROXY':''},'UNSET'),
+                 ({'HTTPS_PROXY':'http://upper.example:8080'},'http://upper.example:8080'),
+                 ({'https_proxy':'http://lower.example:8080'},'http://lower.example:8080'),
+                 ({'HTTP_PROXY':'http://http.example:8080'},'http://http.example:8080'),
+                 ({'http_proxy':'http://http-lower.example:8080'},'http://http-lower.example:8080'),
+                 ({'HTTPS_PROXY':'','https_proxy':'http://fallback.example:8080'},'http://fallback.example:8080'),
+                 ({'ARDUINO_NETWORK_PROXY':'http://explicit.example:8080','HTTPS_PROXY':'http://other.example:8080'},'http://explicit.example:8080')]
+        for overrides,expected in cases:
+            with self.subTest(keys=list(overrides)):
+                environment=os.environ.copy()
+                for key in keys:
+                    environment.pop(key,None)
+                environment.update(overrides)
+                output=subprocess.check_output(['bash','-c',
+                    'set -euo pipefail; . "$1"; printf "%s" "${ARDUINO_NETWORK_PROXY-UNSET}"',
+                    'proxy-test',script],env=environment,text=True)
+                self.assertEqual(output,expected)
 
 
 class FakeApi:

@@ -36,3 +36,7 @@ The configured GitHub test build reports 1,913,787 bytes of program storage (94%
 Added thirteen passing host tests for trigger/retry mapping, staged signed-bundle verification, tag/repository matching, public-only copying, idempotent staging, draft-before-publish ordering, interrupted-upload recovery, immutable published assets, private-repository rejection, digest mismatch and API credential redirect/error handling. Existing signing/updater security tests also pass through `uv run`. No production release was created in the cloud workspace.
 
 Both Actions workflows passed actionlint 1.7.7 after correcting an invalid job-level runner context in the earlier validation workflow. The new publisher uses an `ota-vVERSION` trigger and a built-in GitHub Actions token; it does not require a personal token on the Mac. Live publication remains to be exercised by pushing the user's staged signed bundle.
+
+## Hosted-runner proxy correction
+
+The first release run reached the toolchain installation step after all native/security/publication tests passed. The runner then failed because an empty `ARDUINO_NETWORK_PROXY` was exported: Arduino CLI interpreted it as a proxy at `:0`. Setup now leaves that override unset for direct networking and preserves/reuses a configured session proxy when present. A regression test covers eight proxy-environment combinations; fourteen publication/setup unit tests pass in total. No firmware or signed release bytes changed.

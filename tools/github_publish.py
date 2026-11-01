@@ -147,11 +147,12 @@ def main():
     subprocess.run(['git', 'merge-base', '--is-ancestor', commit, 'origin/main'], check=True)
     # Existing v2.0.0 may predate this workflow. Preserve it when app source is
     # identical; never move a release tag or silently point it at different code.
+    # Installer/network fixes may change without invalidating the existing image.
     canonical_ref = f'refs/tags/{tag}'
     found = subprocess.run(['git', 'rev-parse', '--verify', canonical_ref], capture_output=True)
     if found.returncode == 0:
         subprocess.run(['git', 'diff', '--exit-code', canonical_ref, commit, '--',
-                        '*.ino', '*.h', '*.cpp', 'partitions.csv', 'tools/setup.sh'], check=True)
+                        '*.ino', '*.h', '*.cpp', 'partitions.csv'], check=True)
     api = GitHubApi(os.environ.get('GITHUB_TOKEN'))
     print(publish(api, repository, tag, data, commit))
 

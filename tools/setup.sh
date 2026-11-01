@@ -20,7 +20,7 @@ import json
     'board_manager':{'additional_urls':['https://espressif.github.io/arduino-esp32/package_esp32_index.json']},
     'directories':{'data':str(p/'data'),'downloads':str(p/'staging'),'user':str(p/'user')}}))
 PY
-export ARDUINO_NETWORK_PROXY="${HTTPS_PROXY:-${https_proxy:-}}"
+. "$(dirname "${BASH_SOURCE[0]}")/arduino-proxy.sh"
 cli() { "$NEON_TOOLS_DIR/bin/arduino-cli" --config-file "$NEON_TOOLS_DIR/arduino-cli.yaml" "$@"; }
 cli core update-index
 cli core install esp32:esp32@3.3.12
