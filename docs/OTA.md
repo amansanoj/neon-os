@@ -76,7 +76,19 @@ The signer rejects reused output directories, non-ESP32 images, images with mism
 
 The tool reads sequence/version from `firmware-version.h`, defaults the tag to `vVERSION` (initially `v2.0.0`), and writes `dist/release-SEQUENCE/`. Optional `--tag`, `--sequence`, `--version` and `--out` support explicit release preparation; mismatched binary identity is rejected.
 
-Commit and push the tested source before creating its release tag; the tag should point to the source used for the build. Open GitHub → amansanoj/neon-os → Releases → Draft a new release. Select/create tag **v2.0.0**, attach **firmware.bin** and **release.ota** from `dist/release-2000000/`, select **Set as latest release**, and publish. The image URL in the signed envelope points to this exact tag. The other output files are useful for local auditing and do not need to be attached. **The local signing commands do not publish a GitHub release.**
+For terminal-only publishing with your existing Git/SSH authentication, stage the signed files:
+
+```bash
+uv run --python 3.12 --with-requirements tools/requirements.txt python tools/release.py stage \
+  --public-key "$HOME/.config/neon-os/public.pem" \
+  --github-repo amansanoj/neon-os
+git add -A
+git commit -m "Stage signed v2.0.0 release"
+git tag -a ota-v2.0.0 -m "Publish signed v2.0.0"
+git push origin main ota-v2.0.0
+```
+
+The tag-triggered workflow validates the project, verifies `releases/v2.0.0/`, and publishes the two assets as GitHub Release **v2.0.0** using its built-in token. You do not need `gh` or a personal API token on your Mac. The `ota-` prefix avoids changing your existing canonical v2.0.0 tag; the signed image URL still uses v2.0.0. See [MAC_COMMANDS.md](MAC_COMMANDS.md#4-publish-using-only-git-over-your-existing-ssh-setup) for the repeatable flow. No private signing key is uploaded; public bundles are tracked in Git and grow repository history.
 
 Then upload the configured sketch once over USB. Confirm serial output shows the intended version/identity and OTA health confirmation after successful endpoint verification and at least 60 seconds of healthy operation. This initial server release can have the same sequence as the USB firmware: it proves endpoint/trust continuity without triggering a download.
 
@@ -85,11 +97,11 @@ Then upload the configured sketch once over USB. Confirm serial output shows the
 1. Change the application and increment the sequence; never reuse it for different binaries. Set an appropriate version string.
 2. Run all native tests, build the configured production image, inspect flash/RAM usage and test on a spare or accessible device.
 3. Sign the application using `--github-repo amansanoj/neon-os`; verify it offline. The tool derives a version-specific GitHub image URL.
-4. Draft a new GitHub Release with the matching tag, attach both generated assets, then publish it as latest after testing and approval.
+4. Stage the signed bundle with `release.py stage`, commit it with the source, and push `ota-vVERSION`. Actions runs validation and publishes the matching canonical release with both assets.
 5. The device discovers the release on its next check, downloads to the inactive slot, verifies it and reboots. Controls are briefly unavailable during reboot; flash writes/TLS can also affect latency and must be measured on hardware.
 6. Confirm the advertised HomeSpan sketch version and serial health/OTA logs. Never equate a completed upload with an accepted, healthy new boot.
 
-Normal checks are about 15 minutes apart with jitter. Initial/retry checks use a 10-second starting delay and backoff. There is no inbound Arduino IDE OTA server; selecting a network port in the IDE is not this release workflow. A Git push alone does not deploy firmware. CI builds/tests, and a separate release operator controls signing/promotion.
+Normal checks are about 15 minutes apart with jitter. Initial/retry checks use a 10-second starting delay and backoff. There is no inbound Arduino IDE OTA server; selecting a network port in the IDE is not this release workflow. A normal branch push runs validation. Explicit `ota-vVERSION` tag pushes run the signed-release publisher after validation. Local signing and the tag push are your release approval; no private signing key is stored in Actions.
 
 A deliberate source rollback should be built and approved with a **new, higher sequence**. The application keeps a software version floor in NVS; this is not eFuse anti-rollback and is not protected against physical flash erasure.
 

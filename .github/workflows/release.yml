@@ -1,0 +1,30 @@
+name: Publish signed firmware
+on:
+  push:
+    tags: ['ota-v*']
+permissions:
+  contents: read
+concurrency:
+  group: publish-signed-firmware
+  cancel-in-progress: false
+jobs:
+  validate:
+    uses: ./.github/workflows/validate.yml
+    permissions:
+      contents: read
+  publish:
+    needs: validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@d0d8abe699bfb85fec6de9f7adb5ae17292296ff
+      - name: Verify bundle and publish both assets
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: uv run --python 3.12 --with-requirements tools/requirements.txt python tools/github_publish.py

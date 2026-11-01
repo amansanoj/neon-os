@@ -120,6 +120,10 @@ def main():
     verify.add_argument('--public-key', type=Path, required=True)
     verify.add_argument('--manifest', type=Path, required=True)
     verify.add_argument('--image', type=Path, required=True)
+    stage = sub.add_parser('stage', help='Prepare signed files for Git-push release publication')
+    stage.add_argument('--public-key', type=Path, required=True)
+    stage.add_argument('--github-repo', type=github_repo, required=True)
+    stage.add_argument('--input-dir', type=Path)
     args = parser.parse_args()
     if args.command == 'keygen':
         if args.private_key.resolve().is_relative_to(ROOT):
@@ -169,6 +173,23 @@ def main():
         exclusive_write(args.out / 'manifest.txt.sig', signature)
         exclusive_write(args.out / 'release.ota', signed + signature)
         print(f'Ready: {args.out}/firmware.bin and {args.out}/release.ota')
+    elif args.command == 'stage':
+        from github_publish import checked_bundle
+        sequence, version = source_version()
+        tag = 'v' + version
+        folder = args.input_dir or ROOT / 'dist' / f'release-{sequence}'
+        files, signed_sequence, signed_version = checked_bundle(folder, args.public_key, args.github_repo, tag)
+        if (signed_sequence, signed_version) != (sequence, version):
+            raise ValueError('Signed bundle does not match firmware-version.h')
+        target = ROOT / 'releases' / tag
+        if target.exists():
+            if not all((target/name).is_file() and (target/name).read_bytes() == data for name,data in files.items()):
+                raise ValueError('Staged version already exists with different files; use a new version')
+        else:
+            target.mkdir(parents=True)
+            for name,data in files.items():
+                exclusive_write(target/name,data)
+        print(f'Ready to commit: releases/{tag}; publish by pushing tag ota-{tag}')
     else:
         signed = args.manifest.read_bytes()
         signature = args.manifest.with_name(args.manifest.name + '.sig').read_bytes()

@@ -103,37 +103,45 @@ uv run --python 3.12 --with-requirements tools/requirements.txt python tools/rel
 
 The signer refuses an existing release output folder. Preserve earlier signed outputs; choose a new version/sequence for a different binary. Only remove a disposable local output deliberately when rebuilding a release that has never been approved/published.
 
-## 4. Commit/push code and publish a release
+## 4. Publish using only Git over your existing SSH setup
 
-For the first `2.0.0` release, the firmware code is already committed/pushed by Codex. For later edited versions, review and push your source first:
+Stage the already signed files. This verifies them and copies only the public artifacts and public key into tracked `releases/vVERSION/`:
+
+```bash
+uv run --python 3.12 --with-requirements tools/requirements.txt python tools/release.py stage \
+  --public-key "$HOME/.config/neon-os/public.pem" \
+  --github-repo amansanoj/neon-os
+```
+
+Commit your source changes and the staged bundle, then push a **publication trigger tag**:
 
 ```bash
 git diff --check
 git diff --stat
 git add -A
 git commit -m "Release $NEON_TAG"
-git push origin main
+git tag -a "ota-$NEON_TAG" -m "Publish signed NeonOS $NEON_VERSION"
+git push origin main "ota-$NEON_TAG"
 ```
 
-A Git push runs validation; it does not update the device. Check [GitHub Actions](https://github.com/amansanoj/neon-os/actions) in your browser and wait for the matching commit to pass.
+For the initial release, these variables are `NEON_TAG=v2.0.0`, so the trigger is **ota-v2.0.0**. Keep the existing **v2.0.0** tag; do not delete or force-move it.
 
-After tests pass, tag the exact local commit used for your build. Do not reuse a published tag:
+The **Publish signed firmware** GitHub Actions workflow runs validation, verifies the staged signatures/image/identity, creates or resumes a draft release, uploads both assets, and publishes the canonical **v2.0.0** release as latest. Future `ota-v2.0.1` pushes publish **v2.0.1**. Keep the trigger distinct from the release tag encoded into the image URL.
+
+Your Mac uses ordinary Git authentication, including your already configured SSH key. The workflow uses GitHub's automatically supplied, short-lived `GITHUB_TOKEN` with Contents write permission only in the publishing job. No personal access token, `gh` CLI, Git authentication changes or private signing key in GitHub is required. Organization/repository policy must allow Actions to publish releases.
+
+The bundle contains `firmware.bin`, `release.ota`, the readable manifest/detached signature and **public-key.txt**. The private signing key stays outside the repo. Only `firmware.bin` and `release.ota` become release assets. This Git-only flow stores a firmware binary in repository history for every release, like the tracked binaries in cardputer-nowplaying.
+
+If publication is interrupted, the draft stays unpublished. Retry entirely from the terminal with a fresh trigger tag pointing at the same staged commit:
 
 ```bash
-git tag -a "$NEON_TAG" -m "NeonOS $NEON_VERSION"
-git push origin "$NEON_TAG"
+git tag -a "ota-$NEON_TAG-retry1" -m "Retry publication of $NEON_TAG"
+git push origin "ota-$NEON_TAG-retry1"
 ```
 
-Open [New release](https://github.com/amansanoj/neon-os/releases/new) in your browser. Select the tag you just pushed, enter a title, and attach these two files:
+Use `retry2`, `retry3`, etc. for another attempt; these still publish the same canonical release and never move its tag. A retry can resume matching uploads. Published assets are never overwritten. A repeat of an already published matching release is read-only and does not promote an old release to latest again. An existing canonical tag is preserved only if the app source still matches.
 
-```text
-dist/release-SEQUENCE/firmware.bin
-dist/release-SEQUENCE/release.ota
-```
-
-Replace `SEQUENCE` with the number in `firmware-version.h`. Select **Set as latest release**, leave **prerelease** off, and publish after both uploads finish. Normal Git pushes source/tags; the GitHub website handles release-asset uploads. No GitHub CLI or new Git authentication is required.
-
-The ESP32's stable URL is:
+You can watch progress at [Actions](https://github.com/amansanoj/neon-os/actions), but no browser interaction is needed to publish. The stable device URL remains:
 
 ```text
 https://github.com/amansanoj/neon-os/releases/latest/download/release.ota
@@ -164,7 +172,7 @@ Replace `/dev/cu.YOUR_PORT` with the actual port. Use Serial Monitor at 115200 b
 
 Always increase the sequence; use a fresh version/tag for the next approved binary. A deliberate return to older source also needs a new sequence/tag.
 
-3. Repeat steps 3 and 4: build, sign, verify, commit/push, check CI, tag, create/upload draft, publish latest.
+3. Repeat steps 3 and 4: build, sign, verify, stage, commit and push the `ota-vVERSION` trigger tag. Actions validates and publishes automatically.
 4. The running device normally checks within about 15 minutes, downloads the signed image, verifies it and reboots. GitHub caching can add delay. No USB upload is needed for these updates.
 
-Confirm the actual new version/health before permanent mounting. See [OTA.md](OTA.md#hardware-acceptance) for rollback, interruption, memory and soak tests. No release was automatically published by Codex; these commands are run on your Mac using your real key.
+Confirm the actual new version/health before permanent mounting. See [OTA.md](OTA.md#hardware-acceptance) for rollback, interruption, memory and soak tests. No real device release was published by Codex. Publication starts when you push a trigger tag with your locally signed bundle.

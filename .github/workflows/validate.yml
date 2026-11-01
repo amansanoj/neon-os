@@ -4,35 +4,37 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+  workflow_call:
 permissions:
   contents: read
 jobs:
   validate:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
-    env:
-      NEON_TOOLS_DIR: ${{ runner.temp }}/neon-tools
     steps:
+      - name: Select isolated tool cache
+        run: echo "NEON_TOOLS_DIR=$RUNNER_TEMP/neon-tools" >> "$GITHUB_ENV"
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: '3.12'
+      - uses: astral-sh/setup-uv@d0d8abe699bfb85fec6de9f7adb5ae17292296ff
       - name: Install test dependencies
-        run: |
-          python3 -m pip install -r tools/requirements.txt
-          bash tools/setup-native.sh
+        run: bash tools/setup-native.sh
       - name: Native control, persistence, release and OTA fault tests
         run: |
-          python3 tests/run_native.py
-          python3 tests/run_security.py \
+          uv run --python 3.12 --with-requirements tools/requirements.txt python tests/run_native.py
+          uv run --python 3.12 --with-requirements tools/requirements.txt python tests/run_security.py \
             --mbedtls-include "$NEON_TOOLS_DIR/native-mbedtls/mbedtls-3.6.6/include" \
             --mbedtls-lib-dir "$NEON_TOOLS_DIR/native-mbedtls/mbedtls-3.6.6/library"
+      - name: Release staging and publishing tests
+        run: uv run --python 3.12 --with-requirements tools/requirements.txt python -m unittest discover -s tests -p test_github_publish.py
       - name: Install pinned ESP32 toolchain
         run: bash tools/setup.sh
       - name: Compile an OTA-enabled test profile
         run: |
-          python3 tools/release.py keygen --private-key "$RUNNER_TEMP/test-signing.pem" --public-key "$RUNNER_TEMP/test-public.pem"
-          python3 tools/release.py configure --public-key "$RUNNER_TEMP/test-public.pem" --github-repo "$GITHUB_REPOSITORY"
-          python3 tools/build.py
+          uv run --python 3.12 --with-requirements tools/requirements.txt python tools/release.py keygen --private-key "$RUNNER_TEMP/test-signing.pem" --public-key "$RUNNER_TEMP/test-public.pem"
+          uv run --python 3.12 --with-requirements tools/requirements.txt python tools/release.py configure --public-key "$RUNNER_TEMP/test-public.pem" --github-repo "$GITHUB_REPOSITORY"
+          uv run --python 3.12 python tools/build.py
       # Deliberately no signing/publishing job or test-image upload. Production
       # approval and signing happen separately from untrusted PR validation.

@@ -30,3 +30,9 @@ The endpoint now uses `https://github.com/amansanoj/neon-os/releases/latest/down
 The security suite now includes six additional GitHub redirect scenarios: metadata and image success, HTTP downgrade rejection, loop limit, protocol-relative rejection and oversized Location rejection. Together with the unchanged controls/persistence checks, **54 host checks pass**. The GitHub signing helper inferred the version/sequence/tag and signed/verified the actual configured ESP32 application offline. No release was published.
 
 The configured GitHub test build reports 1,913,787 bytes of program storage (94%), an exported application of 1,913,936 bytes (117,680 bytes remaining), and 74,272 bytes static RAM (22%). The disposable trust header was removed after compilation.
+
+## Git-only release publication
+
+Added thirteen passing host tests for trigger/retry mapping, staged signed-bundle verification, tag/repository matching, public-only copying, idempotent staging, draft-before-publish ordering, interrupted-upload recovery, immutable published assets, private-repository rejection, digest mismatch and API credential redirect/error handling. Existing signing/updater security tests also pass through `uv run`. No production release was created in the cloud workspace.
+
+Both Actions workflows passed actionlint 1.7.7 after correcting an invalid job-level runner context in the earlier validation workflow. The new publisher uses an `ota-vVERSION` trigger and a built-in GitHub Actions token; it does not require a personal token on the Mac. Live publication remains to be exercised by pushing the user's staged signed bundle.
