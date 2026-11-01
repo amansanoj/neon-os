@@ -13,6 +13,8 @@ static std::vector<uint8_t> attempts;
 static std::vector<uint32_t> attemptedAt;
 struct Done {};
 uint32_t millis() { return clockNow; }
+void vTaskDelay(uint32_t ticks) { clockNow+=ticks; }
+static std::atomic<uint32_t> bleHeartbeat{0};
 uint32_t pdMS_TO_TICKS(uint32_t ms) { return ms; }
 template<class A,class B> auto min(A a,B b) {
  using T=std::common_type_t<A,B>;
@@ -71,7 +73,7 @@ static bool due(uint32_t now,uint32_t deadline) {
 int xQueueReceive(void*,LightState*,uint32_t wait) {
  clockNow+=wait;
  // Lose the established link after the initial + periodic RSSI samples.
- if(clockNow>=6000) client.connected=false;
+ if(clockNow>=C::BLE_LINK_LOG_MS+1000) client.connected=false;
  return 0;
 }
 #include "ble-bridge.h"
@@ -90,7 +92,8 @@ int main(int argc,char** argv) {
  if(succeedsOn<0) {
   for(unsigned i=1;i<attemptedAt.size();++i) {
    const uint32_t expected=std::min<uint32_t>(750U<<(i-1),5000U);
-   assert(attemptedAt[i]-attemptedAt[i-1]==expected);
+   const uint32_t delta=attemptedAt[i]-attemptedAt[i-1];
+   assert(delta>=expected && delta<expected+C::WRITE_GAP+2);
   }
  }
  assert(succeedsOn<0?rssiReads==0:rssiReads>=2);

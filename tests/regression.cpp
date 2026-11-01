@@ -35,12 +35,32 @@ int main(int argc,char** argv) {
         device.nextColorLocal();
         assert(sameRgb(currentState.rgb,expected[i]));
         assert(currentPreset(currentState)==static_cast<int>(i));
+        preferences.putUChar("preset",i); // Legacy-record migration remains supported.
         RGB restored{};
         assert(restorePresetRgb(currentState.hue,currentState.saturation,restored));
         assert(sameRgb(restored,expected[i]));
       }
     }
     assert(submissions==21);
+  } else if(scenario=="homekit-validation") {
+    const LightState before=currentState;
+    device.brightness.incoming(101);
+    assert(!device.update() && submissions==0);
+    assert(sameRgb(currentState.rgb,before.rgb) && currentState.brightness==before.brightness);
+    device.brightness.incoming(75); device.hue.incoming(NAN);
+    assert(!device.update() && submissions==0);
+    device.hue.incoming(300); device.saturation.incoming(50); device.power.incoming(1);
+    assert(device.update() && submissions==1);
+    assert(currentState.on && currentState.brightness==75);
+    assert(sameRgb(currentState.rgb,RGB{255,128,255}));
+  } else if(scenario=="render-idle") {
+    render(); const int frames=oled.frames;
+    for(unsigned i=0;i<10000;++i)render();
+    assert(oled.frames==frames);
+    currentState.brightness=99; render(); assert(oled.frames==frames+1);
+    displayEnabled=false; currentState.brightness=98; render();
+    assert(oled.frames==frames+1);
+    displayEnabled=true; render(); assert(oled.frames==frames+2);
   } else if(scenario=="rgb-display") {
     const RGB values[]={{23,54,87},{255,255,255},{0,0,0},{123,234,255}};
     const char* expected[]={"23,54,87","255,255,255","0,0,0","123,234,255"};

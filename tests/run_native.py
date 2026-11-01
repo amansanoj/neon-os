@@ -13,6 +13,8 @@ MOCKS = r'''
 #include <cstdint>
 #include <cstdio>
 #include <map>
+#include <vector>
+#include <cstring>
 #include <string>
 #include <cassert>
 using boolean = bool;
@@ -28,8 +30,25 @@ struct {
  template<class... T> void printf(const char*,T...) {}
  void println(const char*) {}
 } Serial;
-struct {
+struct Preferences {
  std::map<std::string,int> values;
+ std::map<std::string,std::vector<uint8_t>> blobs;
+ static inline std::map<std::string,uint64_t> legacy;
+ static inline int writes=0;
+ static inline bool failWrites=false;
+ bool begin(const char*,bool) { return true; }
+ void end() {}
+ size_t getBytesLength(const char* k) { return blobs[k].size(); }
+ size_t getBytes(const char* k,void* dst,size_t n) {
+  if(blobs[k].size()!=n)return 0;
+  memcpy(dst,blobs[k].data(),n); return n;
+ }
+ size_t putBytes(const char* k,const void* data,size_t n) {
+  if(failWrites)return 0;
+  const auto* p=static_cast<const uint8_t*>(data);
+  blobs[k]=std::vector<uint8_t>(p,p+n); ++writes; return n;
+ }
+ uint64_t getULong64(const char* k,uint64_t d) { return legacy.count(k)?legacy[k]:d; }
  bool getBool(const char* k,bool d) { return values.count(k)?values[k]!=0:d; }
  size_t putBool(const char* k,bool v) { values[k]=v; return 1; }
  uint8_t getUChar(const char* k,uint8_t d) { return values.count(k)?values[k]:d; }
@@ -43,12 +62,13 @@ namespace Service {
 }
 namespace Characteristic {
  struct Value {
-  double value;
-  Value(double v,bool):value(v) {}
+  double value,newValue; bool changed=false;
+  template<class T> Value(T v,bool):value(v),newValue(v) {}
   template<class T> T getVal() { return static_cast<T>(value); }
-  template<class T> T getNewVal() { return static_cast<T>(value); }
-  template<class T> void setVal(T v) { value=v; }
-  bool updated() { return false; }
+  template<class T> T getNewVal() { return static_cast<T>(newValue); }
+  template<class T> void setVal(T v) { value=newValue=v; changed=false; }
+  void incoming(double v) { newValue=v; changed=true; }
+  bool updated() { return changed; }
  };
  using On=Value; using Brightness=Value; using Hue=Value; using Saturation=Value;
 }
@@ -88,11 +108,11 @@ with tempfile.TemporaryDirectory(prefix='neon-tests-') as temp:
         path.touch()
     binary = tmp / 'regression'
     subprocess.run(['g++', '-std=c++17', '-Wall', '-Wextra', '-Werror',
-                    '-Wno-unused-function', '-fsanitize=undefined',
+                    '-Wno-unused-function', '-fsanitize=undefined', '-fno-sanitize-recover=all',
                     '-I', str(tmp), '-I', str(ROOT),
                     str(ROOT / 'tests/regression.cpp'), '-o', str(binary)], check=True)
     for scenario in ['colors', 'single', 'double', 'four', 'invalid', 'hold',
-                     'off', 'bounce', 'boundary', 'late', 'wrap', 'no-storage', 'rgb-display']:
+                     'off', 'bounce', 'boundary', 'late', 'wrap', 'no-storage', 'rgb-display', 'render-idle', 'homekit-validation']:
         subprocess.run([str(binary), scenario], check=True)
         print(f'PASS {scenario}', flush=True)
 
@@ -100,9 +120,18 @@ with tempfile.TemporaryDirectory(prefix='neon-tests-') as temp:
         (tmp / header).touch()
     ble_binary = tmp / 'ble-regression'
     subprocess.run(['g++', '-std=c++17', '-Wall', '-Wextra', '-Werror',
-                    '-Wno-unused-function', '-Wno-unused-variable', '-fsanitize=undefined',
+                    '-Wno-unused-function', '-Wno-unused-variable', '-fsanitize=undefined', '-fno-sanitize-recover=all',
                     '-I', str(tmp), '-I', str(ROOT),
                     str(ROOT / 'tests/ble_regression.cpp'), '-o', str(ble_binary)], check=True)
     for scenario in ['discover', 'public', 'random']:
         subprocess.run([str(ble_binary), scenario], check=True, timeout=10)
         print(f'PASS ble-{scenario}', flush=True)
+
+    persistence = tmp / 'persistence'
+    subprocess.run(['g++', '-std=c++17', '-Wall', '-Wextra', '-Werror',
+                    '-Wno-unused-function', '-Wno-unused-variable', '-fsanitize=undefined',
+                    '-fno-sanitize-recover=all', '-I', str(tmp), '-I', str(ROOT),
+                    str(ROOT / 'tests/persistence.cpp'), '-o', str(persistence)], check=True)
+    for scenario in ['roundtrip', 'corrupt', 'legacy', 'failed-write', 'coalescing']:
+        subprocess.run([str(persistence), scenario], check=True)
+        print(f'PASS persistence-{scenario}', flush=True)

@@ -4,6 +4,7 @@
 struct RGB { uint8_t r, g, b; };
 struct LightState { bool on; uint8_t brightness; RGB rgb; float hue, saturation; };
 static RGB rgbFor(float h,float sat){
+ if(!std::isfinite(h) || !std::isfinite(sat))return {255,255,255};
  h=fmodf(h,360.f);if(h<0)h+=360.f;
  float s=constrain(sat,0.f,100.f)/100.f;
  float c=s,x=c*(1.f-fabsf(fmodf(h/60.f,2.f)-1.f)),m=1.f-c;
@@ -26,9 +27,16 @@ static constexpr ColorPreset COLORS[] = {
  {"Purple",  {128,  0,128}}
 };
 static constexpr uint8_t COLOR_COUNT = sizeof(COLORS)/sizeof(COLORS[0]);
-static bool sameRgb(const RGB& a,const RGB& b) {
+static constexpr bool sameRgb(const RGB& a,const RGB& b) {
  return a.r==b.r && a.g==b.g && a.b==b.b;
 }
+static constexpr bool uniquePresets() {
+ for(uint8_t i=0;i<COLOR_COUNT;++i)
+  for(uint8_t j=i+1;j<COLOR_COUNT;++j)
+   if(sameRgb(COLORS[i].rgb,COLORS[j].rgb))return false;
+ return true;
+}
+static_assert(uniquePresets(),"Duplicate RGB presets would trap the color cycle");
 static int currentPreset(const LightState& s) {
  for(uint8_t i=0;i<COLOR_COUNT;i++)
   if(sameRgb(s.rgb,COLORS[i].rgb)) return i;

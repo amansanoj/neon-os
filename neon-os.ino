@@ -7,6 +7,10 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 #include <HomeSpan.h>
+#include <SpanRollback.h>
+#include <esp_heap_caps.h>
+#include "ota-updater.h"
+#include "firmware-version.h"
 #include <atomic>
 #include <cmath>
 #include <string>
@@ -20,6 +24,7 @@ static bool storageReady = false;
 
 static QueueHandle_t stateQueue = nullptr;
 
+static std::atomic<uint32_t> bleHeartbeat{0};
 static std::atomic<bool> bleConnected{false};
 static std::atomic<bool> bleDropped{false};
 
@@ -48,16 +53,11 @@ static NimBLERemoteCharacteristic*
 
 static bool writeResponse = false;
 
-static bool due(
-    uint32_t now,
-    uint32_t deadline
-) {
-  return static_cast<int32_t>(
-      now - deadline
-  ) >= 0;
-}
+#include "persisted-state.h"
+static TaskHandle_t bleTaskHandle=nullptr;
 
 static void submit(const LightState& state) {
+  stateWrites.changed(millis());
   if (stateQueue) {
     xQueueOverwrite(
         stateQueue,
@@ -74,7 +74,12 @@ void setup() {
   Serial.begin(115200);
   delay(200);
 
-  Serial.println("\nNeonOS");
+  Serial.println("\nNeonOS " NEON_FIRMWARE_VERSION);
+  Serial.println(NeonOta::identity());
+  // Watch the main control task throughout setup and normal polling.
+  homeSpan.enableWatchdog(20);
+  homeSpan.setCompileTime();
+  homeSpan.setSketchVersion(NEON_FIRMWARE_VERSION);
 
   pinMode(
       C::BUTTON_PIN,
@@ -122,6 +127,8 @@ void setup() {
     );
   }
 
+  restoreLightState();
+
   displayEnabled = storageReady
       ? preferences.getBool("oled", true)
       : true;
@@ -136,6 +143,7 @@ void setup() {
   );
 
   Wire.setClock(400000);
+  Wire.setTimeOut(20);
 
   oledReady = oled.begin(
       SSD1306_SWITCHCAPVCC,
@@ -221,6 +229,7 @@ void setup() {
 
   light = new NeonLight();
 
+  bleHeartbeat.store(millis());
   if (
       xTaskCreatePinnedToCore(
           bleWorker,
@@ -228,7 +237,7 @@ void setup() {
           8192,
           nullptr,
           1,
-          nullptr,
+          &bleTaskHandle,
           0
       ) != pdPASS
   ) {
@@ -237,20 +246,37 @@ void setup() {
     );
     abort();
   }
+  if(!NeonOta::begin()) {
+    Serial.println("[OTA] Initialization failed");
+    abort();
+  }
 }
 
 void loop() {
   homeSpan.poll();
-
-  const uint32_t now = millis();
-
+  const uint32_t now=millis();
   buttonTick(now);
-  indicator(now);
-
-  static uint32_t nextRender = 0;
-
-  if (due(now, nextRender)) {
-    nextRender = now + C::UI_REFRESH;
-    render();
+  static uint32_t lastIndicator=0,lastRender=0,lastDiagnostics=0;
+  if(Runtime::elapsed(now,lastIndicator,20)) { indicator(now); lastIndicator=now; }
+  if(Runtime::elapsed(now,lastRender,C::UI_REFRESH)) { render(); lastRender=now; }
+  persistLightState(now);
+  const bool workerHealthy=!Runtime::elapsed(now,bleHeartbeat.load(),C::TASK_STALL_MS);
+  if(!workerHealthy) {
+    Serial.println("[HEALTH] BLE worker stalled; restarting"); ESP.restart();
+  }
+  NeonOta::tick(now,storageReady && stateQueue && light && workerHealthy);
+  if(NeonOta::rebootRequested()) {
+    persistLightState(now,true);
+    Serial.println("[OTA] Verified release ready; rebooting");
+    ESP.restart();
+  }
+  if(Runtime::elapsed(now,lastDiagnostics,C::DIAGNOSTICS_MS)) {
+    lastDiagnostics=now;
+    Serial.printf("[HEALTH] heap=%u min=%u largest=%u stacks main=%u BLE=%u OTA=%u\n",
+        ESP.getFreeHeap(),ESP.getMinFreeHeap(),
+        static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_8BIT)),
+        static_cast<unsigned>(uxTaskGetStackHighWaterMark(nullptr)),
+        static_cast<unsigned>(uxTaskGetStackHighWaterMark(bleTaskHandle)),
+        static_cast<unsigned>(NeonOta::stackHeadroom()));
   }
 }

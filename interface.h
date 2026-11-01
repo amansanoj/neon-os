@@ -147,6 +147,15 @@ static void drawMenuRow(
 
 static void render() {
   if (!oledReady || !displayEnabled) return;
+  static bool rendered=false;
+  static LightState drawn{};
+  static uint8_t drawnOption=0;
+  static bool drawnFlipped=false;
+  if(rendered && drawn.on==currentState.on &&
+      drawn.brightness==currentState.brightness && sameRgb(drawn.rgb,currentState.rgb) &&
+      drawnOption==selectedOption && drawnFlipped==displayFlipped)return;
+  drawn=currentState; drawnOption=selectedOption; drawnFlipped=displayFlipped;
+  rendered=true;
 
   oled.clearDisplay();
   oled.setTextColor(SSD1306_WHITE);
@@ -213,11 +222,8 @@ static void render() {
 static void toggleDisplay() {
   displayEnabled = !displayEnabled;
 
-  if (storageReady) {
-    preferences.putBool(
-        "oled",
-        displayEnabled
-    );
+  if (storageReady && preferences.putBool("oled",displayEnabled)!=1) {
+    Serial.println("[NVS] Could not save display state");
   }
 
   if (oledReady) {

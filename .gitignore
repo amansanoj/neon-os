@@ -1,0 +1,10 @@
+/build*/
+/dist/
+/managed_components/
+/sdkconfig
+/sdkconfig.old
+/ota-config.local.h
+*.pem
+*.key
+__pycache__/
+.pytest_cache/
