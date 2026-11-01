@@ -1,0 +1,8 @@
+NEON-OTA-1
+neon-esp32-wroom-4m
+stable
+2000000
+2.0.0
+1913952
+f58633043720b387ad7503c23af93968b8799a2d4e1491df1eef6b88ffa3a4b7
+https://github.com/amansanoj/neon-os/releases/download/v2.0.0/firmware.bin
