@@ -120,9 +120,9 @@ OLED absence and a powered-off light are degraded operation, not automatic boot 
 
 ```bash
 python3 tests/run_native.py
-python3 -m pip install -r tools/requirements.txt
+uv python install 3.12
 bash tools/setup-native.sh
-python3 tests/run_security.py \
+uv run --python 3.12 --with-requirements tools/requirements.txt python tests/run_security.py \
   --mbedtls-include /workspace/.neon-tools/native-mbedtls/mbedtls-3.6.6/include \
   --mbedtls-lib-dir /workspace/.neon-tools/native-mbedtls/mbedtls-3.6.6/library
 ```

@@ -32,9 +32,9 @@ The device uses public HTTPS download URLs, not the GitHub API, and contains no 
 Install the pinned dependencies from the README and install the signer dependencies on your release workstation:
 
 ```bash
-python3 -m pip install -r tools/requirements.txt
+uv python install 3.12
 mkdir -p "$HOME/.config/neon-os"
-python3 tools/release.py keygen \
+uv run --python 3.12 --with-requirements tools/requirements.txt python tools/release.py keygen \
   --private-key "$HOME/.config/neon-os/signing.pem" \
   --public-key "$HOME/.config/neon-os/public.pem"
 ```
@@ -44,7 +44,7 @@ The private key is created exclusively with mode 0600 and is rejected if its pat
 Configure only the **public** key and your actual stable URL:
 
 ```bash
-python3 tools/release.py configure \
+uv run --python 3.12 --with-requirements tools/requirements.txt python tools/release.py configure \
   --public-key "$HOME/.config/neon-os/public.pem" \
   --github-repo amansanoj/neon-os
 ```
@@ -54,7 +54,7 @@ This selects the stable GitHub Releases endpoint and creates ignored `ota-config
 Set the version/sequence in `firmware-version.h`. The initial rewrite uses version `2.0.0`, sequence `2000000`. Build on Linux:
 
 ```bash
-python3 tools/build.py --production
+uv run --python 3.12 --with-requirements tools/requirements.txt python tools/build.py --production
 ```
 
 Arduino IDE users can build/upload the same sketch with the pinned libraries, local configuration, 4 MB flash, PSRAM disabled and **No FS 4MB (2MB APP x2)**. The checked-in `partitions.csv` is authoritative. Keep **Erase All Flash: Disabled**. This layout retains the existing NVS addresses.
@@ -62,11 +62,11 @@ Arduino IDE users can build/upload the same sketch with the pinned libraries, lo
 Sign the **application image only**:
 
 ```bash
-python3 tools/release.py sign \
+uv run --python 3.12 --with-requirements tools/requirements.txt python tools/release.py sign \
   --private-key "$HOME/.config/neon-os/signing.pem" \
   --image dist/neon-os.ino.bin \
   --github-repo amansanoj/neon-os
-python3 tools/release.py verify \
+uv run --python 3.12 --with-requirements tools/requirements.txt python tools/release.py verify \
   --public-key "$HOME/.config/neon-os/public.pem" \
   --manifest dist/release-2000000/manifest.txt \
   --image dist/release-2000000/firmware.bin

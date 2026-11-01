@@ -11,22 +11,19 @@ git clone https://github.com/amansanoj/neon-os.git
 cd neon-os
 ```
 
-With Homebrew installed:
+Your existing Git identity and authentication are already configured. Keep them as they are.
+
+Using your installed **uv**, make Python 3.12 available once:
 
 ```bash
-brew install python@3.12 arduino-cli gh
-python3.12 -m venv "$HOME/.venvs/neon-os"
-source "$HOME/.venvs/neon-os/bin/activate"
-python -m pip install -r tools/requirements.txt
-
-git config user.name "Aman Sanoj"
-git config user.email "72658023+amansanoj@users.noreply.github.com"
-gh auth login
+uv python install 3.12
 ```
 
-Choose GitHub.com, HTTPS and browser login. Allow Git authentication when prompted. Credentials stay on your Mac; none go into the ESP32.
+The commands below use `uv run`, which manages the signing dependencies automatically. There is no manual virtual-environment creation/activation or pip step. `uvx` is intended for packaged Python CLI tools; these repository scripts use `uv run`.
 
-Install the pinned board package and libraries:
+Use your existing Arduino IDE and installed ESP32 board/libraries from the README. uv manages the signing tools; the Arduino toolchain compiles the firmware. No Homebrew or GitHub CLI is required.
+
+If you already use Arduino CLI, the pinned dependency commands are:
 
 ```bash
 NEON_BOARD_INDEX='https://espressif.github.io/arduino-esp32/package_esp32_index.json'
@@ -35,7 +32,7 @@ arduino-cli core install esp32:esp32@3.3.12 --additional-urls "$NEON_BOARD_INDEX
 arduino-cli lib install 'HomeSpan@2.1.8' 'NimBLE-Arduino@2.3.7' 'Adafruit BusIO@1.17.4' 'Adafruit GFX Library@1.13.0' 'Adafruit SSD1306@2.5.17'
 ```
 
-The Linux/cloud `tools/setup.sh` is not the Mac installer. The direct Arduino CLI commands above use the appropriate Mac toolchain. The build/export/upload flags were checked against the installed Arduino CLI; macOS/Homebrew installation itself has not run in the Linux cloud workspace.
+The Linux/cloud `tools/setup.sh` is not the Mac installer. The optional direct Arduino CLI commands use the appropriate Mac toolchain; you can instead continue building in Arduino IDE.
 
 ## 2. Create your signing key once
 
@@ -55,10 +52,10 @@ Then:
 
 ```bash
 export NEON_SIGNING_KEY_PASSWORD
-python tools/release.py keygen \
+uv run --python 3.12 --with-requirements tools/requirements.txt python tools/release.py keygen \
   --private-key "$HOME/.config/neon-os/signing.pem" \
   --public-key "$HOME/.config/neon-os/public.pem"
-python tools/release.py configure \
+uv run --python 3.12 --with-requirements tools/requirements.txt python tools/release.py configure \
   --public-key "$HOME/.config/neon-os/public.pem" \
   --github-repo amansanoj/neon-os
 ```
@@ -67,32 +64,38 @@ These commands refuse to replace existing keys/configuration. If you have alread
 
 ## 3. Rebuild and sign
 
-In each fresh Terminal session, enter the project folder and activate the virtual environment. Set the board variable:
+In each fresh Terminal session, enter the project folder. If the signing password is not exported, run the hidden `read` line from step 2 by itself again, then `export NEON_SIGNING_KEY_PASSWORD`.
+
+In Arduino IDE, choose **Sketch → Export Compiled Binary**. Set the actual exported application path, for example:
 
 ```bash
-source "$HOME/.venvs/neon-os/bin/activate"
-NEON_BOARD='esp32:esp32:esp32:FlashSize=4M,PSRAM=disabled,PartitionScheme=no_fs'
+NEON_IMAGE="/full/path/to/neon-os.ino.bin"
 ```
 
-If the password is not already exported in this session, run the hidden `read` line from step 2 by itself again, then `export NEON_SIGNING_KEY_PASSWORD`.
-
-Build and sign:
+Alternatively, if Arduino CLI is installed, build with:
 
 ```bash
+NEON_BOARD='esp32:esp32:esp32:FlashSize=4M,PSRAM=disabled,PartitionScheme=no_fs'
 arduino-cli compile --fqbn "$NEON_BOARD" --jobs 4 --export-binaries --output-dir dist .
-python tools/release.py sign \
+NEON_IMAGE="dist/neon-os.ino.bin"
+```
+
+Sign the exported application:
+
+```bash
+uv run --python 3.12 --with-requirements tools/requirements.txt python tools/release.py sign \
   --private-key "$HOME/.config/neon-os/signing.pem" \
-  --image dist/neon-os.ino.bin \
+  --image "$NEON_IMAGE" \
   --github-repo amansanoj/neon-os
 ```
 
 Read version/sequence directly from the source so subsequent commands cannot accidentally use a stale release folder:
 
 ```bash
-NEON_VERSION=$(python -c 'from tools.release import source_version; print(source_version()[1])')
-NEON_SEQUENCE=$(python -c 'from tools.release import source_version; print(source_version()[0])')
+NEON_VERSION=$(uv run --python 3.12 --with-requirements tools/requirements.txt python -c 'from tools.release import source_version; print(source_version()[1])')
+NEON_SEQUENCE=$(uv run --python 3.12 --with-requirements tools/requirements.txt python -c 'from tools.release import source_version; print(source_version()[0])')
 NEON_TAG="v$NEON_VERSION"
-python tools/release.py verify \
+uv run --python 3.12 --with-requirements tools/requirements.txt python tools/release.py verify \
   --public-key "$HOME/.config/neon-os/public.pem" \
   --manifest "dist/release-$NEON_SEQUENCE/manifest.txt" \
   --image "dist/release-$NEON_SEQUENCE/firmware.bin"
@@ -112,11 +115,7 @@ git commit -m "Release $NEON_TAG"
 git push origin main
 ```
 
-A Git push runs validation; it does not update the device. Check the GitHub Actions result for the source you're releasing:
-
-```bash
-gh run list --repo amansanoj/neon-os --workflow validate.yml --branch main --limit 1
-```
+A Git push runs validation; it does not update the device. Check [GitHub Actions](https://github.com/amansanoj/neon-os/actions) in your browser and wait for the matching commit to pass.
 
 After tests pass, tag the exact local commit used for your build. Do not reuse a published tag:
 
@@ -125,18 +124,16 @@ git tag -a "$NEON_TAG" -m "NeonOS $NEON_VERSION"
 git push origin "$NEON_TAG"
 ```
 
-Create a **draft** release with both assets, then publish it as latest:
+Open [New release](https://github.com/amansanoj/neon-os/releases/new) in your browser. Select the tag you just pushed, enter a title, and attach these two files:
 
-```bash
-gh release create "$NEON_TAG" \
-  "dist/release-$NEON_SEQUENCE/firmware.bin" \
-  "dist/release-$NEON_SEQUENCE/release.ota" \
-  --repo amansanoj/neon-os --verify-tag --draft \
-  --title "NeonOS $NEON_VERSION" --notes "Signed OTA firmware release."
-gh release edit "$NEON_TAG" --repo amansanoj/neon-os --draft=false --latest
+```text
+dist/release-SEQUENCE/firmware.bin
+dist/release-SEQUENCE/release.ota
 ```
 
-This requires a public repository and your GitHub login's permission to create releases. It uploads only the public application and signed metadata. The ESP32's stable URL is:
+Replace `SEQUENCE` with the number in `firmware-version.h`. Select **Set as latest release**, leave **prerelease** off, and publish after both uploads finish. Normal Git pushes source/tags; the GitHub website handles release-asset uploads. No GitHub CLI or new Git authentication is required.
+
+The ESP32's stable URL is:
 
 ```text
 https://github.com/amansanoj/neon-os/releases/latest/download/release.ota
@@ -144,19 +141,16 @@ https://github.com/amansanoj/neon-os/releases/latest/download/release.ota
 
 ## 5. First USB installation only
 
-The existing pre-v2 firmware cannot install its own first OTA-enabled replacement. Publish the initial signed release above, connect the ESP32 to USB and find its port:
+The existing pre-v2 firmware cannot install its own first OTA-enabled replacement. Publish the initial signed release, connect the ESP32 over USB, then select its USB port in Arduino IDE and click **Upload**. Keep flash erasure disabled and retain the No FS two-slot layout.
+
+Alternatively, if you built with Arduino CLI, find the port and upload the already built image:
 
 ```bash
 arduino-cli board list
-```
-
-Replace `/dev/cu.YOUR_PORT` below with the actual port shown:
-
-```bash
 arduino-cli upload --port /dev/cu.YOUR_PORT --fqbn "$NEON_BOARD" --input-dir dist .
 ```
 
-This uploads the already built image. Keep flash erasure disabled. Use Arduino IDE Serial Monitor at 115200 baud to provision Wi-Fi/HomeKit if necessary and check `[OTA] Application health confirmed`. Existing pairing/settings are intended to survive; hardware acceptance is still required.
+Replace `/dev/cu.YOUR_PORT` with the actual port. Use Serial Monitor at 115200 baud to provision Wi-Fi/HomeKit if necessary and check `[OTA] Application health confirmed`. Existing pairing/settings are intended to survive; hardware acceptance is still required.
 
 ## 6. Every later update
 
